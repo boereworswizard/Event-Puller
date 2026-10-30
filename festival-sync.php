@@ -18,6 +18,7 @@ define( 'GFS_SOURCE_META', '_gfs_source_id' );
 
 require_once GFS_DIR . 'includes/class-gfs-api.php';
 require_once GFS_DIR . 'includes/class-gfs-sync.php';
+require_once GFS_DIR . 'includes/class-gfs-fields.php';
 require_once GFS_DIR . 'includes/class-gfs-settings.php';
 
 /**
@@ -69,6 +70,8 @@ add_action(
 		( new GFS_Sync( gfs_get_settings() ) )->run( false );
 	}
 );
+
+new GFS_Fields();
 
 if ( is_admin() ) {
 	new GFS_Settings();

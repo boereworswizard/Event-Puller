@@ -108,6 +108,7 @@ class GFS_Sync {
 				continue;
 			}
 
+			$event   = ( new GFS_API( $this->settings ) )->with_details( $event );
 			$post_id = $match ? $match['id'] : $this->create_post( $event );
 			if ( is_wp_error( $post_id ) || ! $post_id ) {
 				$summary['errors']++;
@@ -149,6 +150,10 @@ class GFS_Sync {
 	}
 
 	public function passes_filters( $event ) {
+		if ( 'cancelled' === $event['status'] ) {
+			return false;
+		}
+
 		$allowed = $this->allowed_types();
 		if ( $allowed ) {
 			$type = $this->norm_type( $event['type'] );
@@ -260,6 +265,12 @@ class GFS_Sync {
 
 	/** Whether any mapped field on an existing post is empty and could be filled. */
 	private function has_gaps( $post_id, array $event ) {
+		// Text fields only exist on the detail endpoint, so check them against the post alone.
+		foreach ( array( 'details', 'festival_lineup', 'venue_name', 'price_from', 'priceCurrency', 'buy_link' ) as $name ) {
+			if ( '' === (string) get_post_meta( $post_id, $name, true ) ) {
+				return true;
+			}
+		}
 		foreach ( $this->field_values( $event ) as $name => $value ) {
 			if ( '' !== $value && '' === (string) get_post_meta( $post_id, $name, true ) ) {
 				return true;
@@ -288,6 +299,12 @@ class GFS_Sync {
 			'priceCurrency'   => $event['currency'],
 			'price_from'      => $event['price'],
 			'buy_link'        => $event['ticket'],
+			'organizer_name'  => $event['organizer'],
+			'organizer_url'   => $event['organizer_url'],
+			'event_latitude'  => $event['lat'],
+			'event_longitude' => $event['lon'],
+			'event_timezone'  => $event['timezone'],
+			'event_status'    => $event['status'] ? ucfirst( $event['status'] ) : '',
 		);
 	}
 
@@ -311,7 +328,7 @@ class GFS_Sync {
 			if ( $fill_only && '' !== (string) get_post_meta( $post_id, $name, true ) ) {
 				continue;
 			}
-			$key = self::FIELDS[ $name ];
+			$key = self::FIELDS[ $name ] ?? GFS_Fields::keys()[ $name ];
 			if ( function_exists( 'update_field' ) ) {
 				update_field( $key, $value, $post_id );
 			} else {
