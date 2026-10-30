@@ -18,12 +18,60 @@ class GFS_API {
 	}
 
 	/**
+	 * The API filters by a single ISO country code, so each configured country is
+	 * requested separately (no countries configured = one unfiltered request).
+	 *
 	 * @return array|WP_Error List of normalised events.
 	 */
 	public function fetch() {
-		$args = apply_filters( 'gfs_api_query_args', array() );
-		$url  = add_query_arg( $args, $this->settings['api_url'] );
+		$countries = array_filter( array_map( 'trim', explode( ',', strtoupper( (string) $this->settings['countries'] ) ) ) );
+		$events    = array();
+		foreach ( $countries ? array_values( $countries ) : array( '' ) as $country ) {
+			$args = apply_filters( 'gfs_api_query_args', $country ? array( 'country' => $country ) : array() );
+			$list = $this->request( add_query_arg( $args, $this->settings['api_url'] ) );
+			if ( is_wp_error( $list ) ) {
+				return $list;
+			}
+			foreach ( $list as $raw ) {
+				$event = is_array( $raw ) ? $this->normalise( $raw ) : null;
+				if ( $event ) {
+					$events[ $event['id'] ] = $event;
+				}
+			}
+		}
+		return array_values( $events );
+	}
 
+	/**
+	 * The list endpoint omits the long texts, lineup, location and entry fee;
+	 * those only exist on the single-party endpoint. Cached to spare the API.
+	 *
+	 * @return array The event, enriched where the detail call succeeded.
+	 */
+	public function with_details( array $event ) {
+		$cache_key = 'gfs_detail_' . md5( $event['id'] );
+		$detail    = get_transient( $cache_key );
+		if ( false === $detail ) {
+			$detail = $this->request( trailingslashit( $this->settings['api_url'] ) . rawurlencode( $event['id'] ) );
+			if ( is_wp_error( $detail ) ) {
+				return $event;
+			}
+			$detail = $detail ? $this->normalise( $detail[0] ) : array();
+			set_transient( $cache_key, $detail, 12 * HOUR_IN_SECONDS );
+		}
+		if ( ! $detail ) {
+			return $event;
+		}
+		foreach ( array( 'description', 'lineup', 'venue', 'price' ) as $field ) {
+			if ( '' === $event[ $field ] && ! empty( $detail[ $field ] ) ) {
+				$event[ $field ] = $detail[ $field ];
+			}
+		}
+		return $event;
+	}
+
+	/** @return array|WP_Error Raw party arrays from a list or single-party response. */
+	private function request( $url ) {
 		$response = wp_remote_get(
 			$url,
 			array(
@@ -54,21 +102,12 @@ class GFS_API {
 		if ( $list && ! isset( $list[0] ) && isset( $list['id'] ) ) {
 			$list = array( $list );
 		}
-
-		$events = array();
-		foreach ( $list as $raw ) {
-			if ( is_array( $raw ) ) {
-				$event = $this->normalise( $raw );
-				if ( $event ) {
-					$events[] = $event;
-				}
-			}
-		}
-		return $events;
+		return array_values( $list );
 	}
 
 	private function pick( array $raw, array $keys ) {
-		foreach ( $keys as $key ) {
+		$raw = array_change_key_case( $raw );
+		foreach ( array_map( 'strtolower', $keys ) as $key ) {
 			if ( isset( $raw[ $key ] ) && is_scalar( $raw[ $key ] ) && '' !== trim( (string) $raw[ $key ] ) ) {
 				return trim( (string) $raw[ $key ] );
 			}
@@ -108,18 +147,19 @@ class GFS_API {
 			'id'          => $id,
 			'name'        => wp_strip_all_tags( $name ),
 			'type'        => $this->pick( $raw, array( 'nameType', 'type' ) ),
+			'status'      => strtolower( $this->pick( $raw, array( 'nameStatus', 'status' ) ) ),
 			'start'       => $start,
 			'end'         => $end,
-			'description' => $this->clean_text( $this->pick( $raw, array( 'textData', 'textIntro', 'description', 'text' ) ) ),
+			'description' => $this->clean_text( $this->pick( $raw, array( 'textMore', 'textData', 'textIntro', 'description', 'text' ) ) ),
 			'lineup'      => $this->clean_text( $this->pick( $raw, array( 'textLineup', 'lineup' ) ) ),
-			'venue'       => $this->pick( $raw, array( 'nameVenue', 'nameLocation', 'venue', 'location' ) ),
+			'venue'       => $this->pick( $raw, array( 'textLocation', 'nameVenue', 'nameLocation', 'venue', 'location' ) ),
 			'street'      => $this->pick( $raw, array( 'street', 'addressStreet', 'streetAddress' ) ),
 			'town'        => $this->pick( $raw, array( 'nameTown', 'town', 'city' ) ),
 			'region'      => $this->pick( $raw, array( 'nameRegion', 'region', 'state' ) ),
 			'zip'         => $this->pick( $raw, array( 'zip', 'postalCode', 'postcode' ) ),
 			'country'     => $this->pick( $raw, array( 'nameCountry', 'country' ) ),
 			'iso'         => strtoupper( $this->pick( $raw, array( 'isoCountry', 'countryCode', 'iso' ) ) ),
-			'price'       => $this->pick( $raw, array( 'priceEntrance', 'price', 'entranceFee' ) ),
+			'price'       => $this->first_number( $this->pick( $raw, array( 'textEntryFee', 'priceEntrance', 'price', 'entranceFee' ) ) ),
 			'currency'    => $this->pick( $raw, array( 'priceCurrency', 'currency' ) ),
 			'ticket'      => $this->is_external_url( $ticket ) ? esc_url_raw( $ticket ) : '',
 			'facebook'    => $facebook ? esc_url_raw( $facebook ) : '',
@@ -127,6 +167,11 @@ class GFS_API {
 			'image'       => $this->is_external_url( $image ) ? esc_url_raw( $image ) : '',
 			'styles'      => $this->collect_styles( $raw ),
 		);
+	}
+
+	/** The API's entry fee is free text ("20 EUR presale"); the price field wants a number. */
+	private function first_number( $text ) {
+		return preg_match( '/\d+(?:[.,]\d+)?/', $text, $m ) ? str_replace( ',', '.', $m[0] ) : '';
 	}
 
 	/** Valid http(s) URL that does not point back to the source site. */
