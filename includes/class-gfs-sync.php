@@ -266,7 +266,7 @@ class GFS_Sync {
 	/** Whether any mapped field on an existing post is empty and could be filled. */
 	private function has_gaps( $post_id, array $event ) {
 		// Text fields only exist on the detail endpoint, so check them against the post alone.
-		foreach ( array( 'details', 'festival_lineup', 'venue_name', 'price_from' ) as $name ) {
+		foreach ( array( 'details', 'festival_lineup', 'venue_name', 'price_from', 'priceCurrency', 'buy_link' ) as $name ) {
 			if ( '' === (string) get_post_meta( $post_id, $name, true ) ) {
 				return true;
 			}
