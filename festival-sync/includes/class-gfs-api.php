@@ -165,8 +165,21 @@ class GFS_API {
 			'facebook'    => $facebook ? esc_url_raw( $facebook ) : '',
 			'video'       => $video ? esc_url_raw( $video ) : '',
 			'image'       => $this->is_external_url( $image ) ? esc_url_raw( $image ) : '',
+			'organizer'  => $this->pick( $raw, array( 'nameOrganizer' ) ),
+			'organizer_url' => $this->external_url( $this->pick( $raw, array( 'urlOrganizer' ) ) ),
+			'lat'         => $this->pick( $raw, array( 'geoLat' ) ),
+			'lon'         => $this->pick( $raw, array( 'geoLon' ) ),
+			'timezone'    => $this->pick( $raw, array( 'timezone' ) ),
 			'styles'      => $this->collect_styles( $raw ),
 		);
+	}
+
+	/** The API gives organizer sites without a scheme ("www.example.co.za"). */
+	private function external_url( $url ) {
+		if ( '' !== $url && ! preg_match( '#^https?://#i', $url ) ) {
+			$url = 'https://' . $url;
+		}
+		return $this->is_external_url( $url ) ? esc_url_raw( $url ) : '';
 	}
 
 	/** The API's entry fee is free text ("20 EUR presale"); the price field wants a number. */

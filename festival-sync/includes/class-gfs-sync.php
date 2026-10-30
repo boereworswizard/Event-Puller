@@ -299,6 +299,12 @@ class GFS_Sync {
 			'priceCurrency'   => $event['currency'],
 			'price_from'      => $event['price'],
 			'buy_link'        => $event['ticket'],
+			'organizer_name'  => $event['organizer'],
+			'organizer_url'   => $event['organizer_url'],
+			'event_latitude'  => $event['lat'],
+			'event_longitude' => $event['lon'],
+			'event_timezone'  => $event['timezone'],
+			'event_status'    => $event['status'] ? ucfirst( $event['status'] ) : '',
 		);
 	}
 
@@ -322,7 +328,7 @@ class GFS_Sync {
 			if ( $fill_only && '' !== (string) get_post_meta( $post_id, $name, true ) ) {
 				continue;
 			}
-			$key = self::FIELDS[ $name ];
+			$key = self::FIELDS[ $name ] ?? GFS_Fields::keys()[ $name ];
 			if ( function_exists( 'update_field' ) ) {
 				update_field( $key, $value, $post_id );
 			} else {
