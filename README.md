@@ -10,3 +10,10 @@ Install: copy the `festival-sync` folder to `wp-content/plugins/`, activate, the
 - Existing festivals you created are only filled where fields are empty. Posts created by the plugin are refreshed on each sync (optional).
 - No links back to the source are stored or shown; source URLs are stripped from imported text. The source ID is kept in hidden meta `_gfs_source_id` for matching only.
 - Filters: `gfs_api_query_args` to add query parameters to the API request.
+
+## Installing
+
+Download the repository with **Code → Download ZIP** and upload it in WordPress under
+**Plugins → Add New → Upload Plugin**, then activate it. The plugin files sit at the
+repository root so the GitHub zip installs as-is. Publishing a GitHub release also builds a
+`festival-sync.zip` with a clean `festival-sync/` folder name.
